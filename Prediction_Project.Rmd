@@ -1,0 +1,200 @@
+---
+title: "Prediction_Project"
+author: "LaKeya King"
+date: "2026-05-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+
+set.seed(12345)
+```
+
+## Background
+Using wearable devices such as Jawbone Up, Nike FuelBand, and Fitbit, it is possible to collect detailed information about physical activity. In this project, accelerometer data collected from the belt, forearm, arm, and dumbbell of six participants were used to predict the manner in which participants performed barbell lifts.
+
+The outcome variable is **classe**, which indicates whether the exercise was performed correctly or incorrectly.
+
+## Load Data
+
+```{r}
+training <- read.csv("pml-training.csv", na.strings=c("NA","#DIV/0!",""))
+testing  <- read.csv("pml-testing.csv", na.strings=c("NA","#DIV/0!",""))
+
+dim(training)
+dim(testing)
+```
+
+---
+
+## Data Cleaning
+
+First, remove variables with mostly missing values.
+
+```{r}
+naCols <- colSums(is.na(training)) > 0.95*nrow(training)
+training <- training[, !naCols]
+testing  <- testing[, !naCols]
+```
+
+Remove non-predictive variables (ID/time variables).
+
+```{r}
+training <- training[, -(1:7)]
+testing  <- testing[, -(1:7)]
+
+dim(training)
+dim(testing)
+```
+
+---
+
+# Partition Data
+
+Use 70% for training and 30% for validation.
+
+```{r}
+inTrain <- createDataPartition(training$classe, p = 0.7, list = FALSE)
+
+trainSet <- training[inTrain, ]
+validSet <- training[-inTrain, ]
+
+dim(trainSet)
+dim(validSet)
+```
+
+---
+
+## Cross Validation Setup
+
+Use 5-fold cross-validation.
+
+```{r}
+control <- trainControl(
+  method = "cv",
+  number = 5
+)
+```
+
+---
+
+## Model 1: Decision Tree
+
+```{r}
+model_tree <- train(
+  classe ~ .,
+  data = trainSet,
+  method = "rpart",
+  trControl = control
+)
+
+model_tree
+```
+
+Plot tree:
+
+```{r}
+rpart.plot(model_tree$finalModel)
+```
+
+---
+
+## Model 2: Random Forest
+
+```{r}
+model_rf <- train(
+  classe ~ .,
+  data = trainSet,
+  method = "rf",
+  trControl = control,
+  ntree = 250
+)
+
+model_rf
+```
+
+---
+
+## Model Comparison
+
+# Decision Tree
+
+```{r}
+pred_tree <- predict(model_tree, newdata = validSet)
+
+pred_tree <- factor(pred_tree,
+                    levels = c("A","B","C","D","E"))
+
+actual_tree <- factor(validSet$classe,
+                      levels = c("A","B","C","D","E"))
+
+cm_tree <- confusionMatrix(
+  data = pred_tree,
+  reference = actual_tree
+)
+
+cm_tree
+
+
+## Random Forest
+pred_rf <- predict(model_rf, newdata = validSet)
+
+pred_rf <- factor(pred_rf,
+                  levels = c("A","B","C","D","E"))
+
+actual_rf <- factor(validSet$classe,
+                    levels = c("A","B","C","D","E"))
+
+cm_rf <- confusionMatrix(
+  data = pred_rf,
+  reference = actual_rf
+)
+
+cm_rf
+```
+
+---
+
+## Selected Model
+
+The Random Forest model produced substantially higher accuracy and lower out-of-sample error than the Decision Tree model, so it was selected as the final model.
+
+Expected out-of-sample error:
+
+```{r}
+1 - cm_rf$overall["Accuracy"]
+```
+
+This error rate is expected to be approximately **< 1%**.
+
+---
+
+## Final Prediction on Test Data
+
+```{r}
+final_predictions <- predict(model_rf, testing)
+final_predictions
+```
+
+---
+
+## Conclusion
+
+The Random Forest algorithm was selected because it produced the highest validation accuracy. Cross-validation was used to reduce overfitting and estimate future performance. The final model achieved approximately **99% accuracy**, suggesting excellent predictive performance for identifying exercise quality.
+
+
+----
+
+## Appendix
+
+Variable Importance
+```{r}
+varImp(model_rf)
+plot(varImp(model_rf))
+```
